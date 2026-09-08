@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{title}}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="phone-screen">
+    <div class="screen-content">
+      <div class="page-head">
+        <h1>Новый акционер</h1>
+      </div>
+
+      {{#if data.draft}}
+        <form class="add-form">
+          <label class="form-label">Изображение</label>
+          <input type="file" disabled>
+          <span class="form-hint">Текущий файл: {{data.draft.imageKey}}</span>
+
+          <label class="form-label">Видео</label>
+          <input type="file" disabled>
+          <span class="form-hint">Текущий файл: {{data.draft.videoKey}}</span>
+
+          <label class="form-label">ФИО / название</label>
+          <input type="text" value="{{data.draft.title}}" disabled>
+
+          <label class="form-label">Описание</label>
+          <textarea disabled>{{data.draft.description}}</textarea>
+
+          <label class="form-label">Доля владения, %</label>
+          <input type="number" value="{{data.draft.ownershipShare}}" disabled>
+
+          <label class="form-label">Количество акций</label>
+          <input type="number" value="{{data.draft.sharesCount}}" disabled>
+        </form>
+      {{else}}
+        <p class="empty-state">Черновиков нет</p>
+      {{/if}}
+    </div>
+
+    {{> tabbar active="add" }}
+  </div>
+</body>
+</html>

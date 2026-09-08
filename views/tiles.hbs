@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{title}}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="phone-screen">
+    <div class="screen-content">
+      <div class="page-head">
+        <h1>Акционеры</h1>
+      </div>
+
+      <form action="/dividends/tiles" method="GET" class="filter-form">
+        <input type="number" name="minShare" placeholder="Мин. доля владения, %" value="{{data.minShare}}">
+        <button type="submit">Найти</button>
+      </form>
+
+      <div class="tile-grid">
+        {{#each data.shareholders}}
+          <a href="/dividends/feed/{{this.id}}" class="tile-card">
+            <img src="{{this.imageKey}}" alt="{{this.title}}" class="tile-image">
+            <div class="tile-info">
+              <span class="tile-title">{{this.title}}</span>
+              <span class="tile-likes">❤ {{this.likes.length}}</span>
+            </div>
+          </a>
+        {{else}}
+          <p class="empty-state">Ничего не найдено</p>
+        {{/each}}
+      </div>
+    </div>
+
+    {{> tabbar active="tiles" }}
+  </div>
+</body>
+</html>

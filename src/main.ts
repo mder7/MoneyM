@@ -5,6 +5,8 @@ import { join } from 'path';
 
 const hbs = require('hbs');
 
+hbs.registerHelper('eq', (a: unknown, b: unknown) => a === b);
+
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 

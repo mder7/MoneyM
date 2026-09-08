@@ -1,51 +1,69 @@
-import { Body, Controller, Get, Param, Post, Render } from '@nestjs/common';
+import { Controller, Get, Param, Query, Render } from '@nestjs/common';
 import { DividendsService } from './dividends.service';
+import { Shareholder } from './shareholder.interface';
 
 @Controller('dividends')
 export class DividendsController {
   constructor(private readonly dividendsService: DividendsService) {}
 
-  // Главная страница со списком акционеров
+  // Лента — стартовая страница (первый опубликованный акционер)
+  // GET /dividends
   @Get()
-  @Render('main')
-  getShareholders() {
+  @Render('feed')
+  getDefaultFeed() {
+    const [first] = this.dividendsService.findPublished();
+    return this.buildFeedView(first);
+  }
+
+  // Плитка карточек — список всех опубликованных акционеров
+  // GET /dividends/tiles?minShare=20
+  @Get('tiles')
+  @Render('tiles')
+  getTiles(@Query('minShare') minShare?: string) {
+    const parsedMinShare = minShare ? Number(minShare) : undefined;
+    const shareholders = this.dividendsService.findPublished(parsedMinShare);
+
     return {
       title: 'Акционеры компании',
-      name: 'BMSTU',
       data: {
-        current_date: new Date().toLocaleDateString(),
-        shareholders: this.dividendsService.findAll(),
+        shareholders,
+        minShare: minShare ?? '',
       },
     };
   }
 
-  // Страница конкретного акционера
-  @Get('shareholder/:id')
-  @Render('shareholder')
-  getShareholder(@Param('id') id: string) {
-    const shareholder = this.dividendsService.findById(Number(id));
+  // Страница "добавление" — показывает единственный черновик
+  // GET /dividends/add
+  @Get('add')
+  @Render('add')
+  getAddPage() {
+    const draft = this.dividendsService.findDraft();
+    return {
+      title: 'Добавление акционера',
+      data: { draft },
+    };
+  }
+
+  // Лента — конкретный акционер по id, либо следующий (?next=true)
+  // GET /dividends/feed/:id?next=true
+  @Get('feed/:id')
+  @Render('feed')
+  getFeed(@Param('id') id: string, @Query('next') next?: string) {
+    const numericId = Number(id);
+    const shareholder =
+      next === 'true'
+        ? this.dividendsService.findNextAfter(numericId)
+        : this.dividendsService.findById(numericId);
+
+    return this.buildFeedView(shareholder);
+  }
+
+  private buildFeedView(shareholder?: Shareholder) {
     return {
       title: shareholder ? shareholder.title : 'Не найдено',
       data: {
-        id,
-        current_date: new Date().toLocaleDateString(),
-        shareholder: shareholder,
-      },
-    };
-  }
-
-  // Поиск акционера по ФИО через POST-форму
-  @Post()
-  @Render('main')
-  async searchShareholders(@Body() body: { query?: string }) {
-    const query = body?.query || '';
-    return {
-      title: 'Акционеры компании',
-      name: 'BMSTU',
-      data: {
-        current_date: new Date().toLocaleDateString(),
-        shareholders: this.dividendsService.search(query),
-        query,
+        shareholder,
+        likesCount: shareholder ? this.dividendsService.likesCount(shareholder) : 0,
       },
     };
   }
