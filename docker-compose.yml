@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: mm-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: mm
+      POSTGRES_USER: mm_user
+      POSTGRES_PASSWORD: mm_password
+    ports:
+      - '5433:5432'
+    volumes:
+      - mm_postgres_data:/var/lib/postgresql/data
+
+  adminer:
+    image: adminer:latest
+    container_name: mm-adminer
+    restart: unless-stopped
+    ports:
+      - '8080:8080'
+    depends_on:
+      - postgres
+
+volumes:
+  mm_postgres_data:

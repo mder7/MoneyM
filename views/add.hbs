@@ -4,40 +4,85 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{title}}</title>
-  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:wght@600&family=Poppins:wght@400;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <div class="phone-screen">
     <div class="screen-content">
       <div class="page-head">
-        <h1>Новый акционер</h1>
+        <h1>{{#if data.draft}}Новый акционер{{else}}Добавление акционера{{/if}}</h1>
       </div>
 
       {{#if data.draft}}
-        <form class="add-form">
-          <label class="form-label">Изображение</label>
-          <input type="file" disabled>
-          <span class="form-hint">Текущий файл: {{data.draft.imageKey}}</span>
+        <!-- Черновик уже создан: фото/видео ВИДНЫ, но выбрать их здесь уже нельзя -->
+        <div class="add-media-row">
+          <div class="media-picker">
+            <span class="form-label">Фото</span>
+            <div class="media-preview" style="background-image:url('{{data.draft.imageKey}}')"></div>
+            <label class="file-pick-btn file-pick-btn--disabled">
+              Выбрать файл
+              <input type="file" accept="image/*" class="file-pick-input" disabled>
+            </label>
+          </div>
+          <div class="media-picker">
+            <span class="form-label">Видео</span>
+            <div class="media-preview video">
+              <video src="{{data.draft.videoKey}}" autoplay loop muted playsinline></video>
+              <span class="play-badge">▶</span>
+            </div>
+            <label class="file-pick-btn file-pick-btn--disabled">
+              Выбрать файл
+              <input type="file" accept="video/*" class="file-pick-input" disabled>
+            </label>
+          </div>
+        </div>
 
-          <label class="form-label">Видео</label>
-          <input type="file" disabled>
-          <span class="form-hint">Текущий файл: {{data.draft.videoKey}}</span>
-
-          <label class="form-label">ФИО / название</label>
+        <form class="add-form" action="/shareholders/{{data.draft.id}}/publish" method="POST">
+          <label class="form-label">Название</label>
           <input type="text" value="{{data.draft.title}}" disabled>
 
           <label class="form-label">Описание</label>
-          <textarea disabled>{{data.draft.description}}</textarea>
+          <textarea name="shortDescription" required>{{data.draft.description}}</textarea>
 
           <label class="form-label">Доля владения, %</label>
-          <input type="number" value="{{data.draft.ownershipShare}}" disabled>
+          <input type="number" step="0.01" name="ownershipShare" value="{{data.draft.ownershipShare}}" required>
 
-          <label class="form-label">Количество акций</label>
-          <input type="number" value="{{data.draft.sharesCount}}" disabled>
+          <label class="form-label">Доля привилегированных, %</label>
+          <input type="number" step="0.01" name="preferredShare" value="{{data.draft.preferredShare}}" required>
+
+          <button type="submit" class="add-submit-btn">Опубликовать</button>
         </form>
       {{else}}
-        <p class="empty-state">Черновиков нет</p>
+        <!-- Черновика ещё нет: фото/видео ВИДНЫ и их МОЖНО выбрать -->
+        <form class="add-form" action="/shareholders" method="POST">
+          <label class="form-label">Название / ФИО</label>
+          <input type="text" name="fullName" required>
+
+          <div class="add-media-row">
+            <div class="media-picker">
+              <span class="form-label">Фото</span>
+              <div class="media-preview" style="background-image:url('/img/default.jpg')"></div>
+              <label class="file-pick-btn">
+                Выбрать файл
+                <input type="file" accept="image/*" class="file-pick-input">
+              </label>
+            </div>
+            <div class="media-picker">
+              <span class="form-label">Видео</span>
+              <div class="media-preview video">
+                <video src="/video/default.mp4" autoplay loop muted playsinline></video>
+                <span class="play-badge">▶</span>
+              </div>
+              <label class="file-pick-btn">
+                Выбрать файл
+                <input type="file" accept="video/*" class="file-pick-input">
+              </label>
+            </div>
+          </div>
+
+          <button type="submit" class="add-submit-btn">Далее</button>
+        </form>
       {{/if}}
     </div>
 

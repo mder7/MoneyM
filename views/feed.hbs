@@ -4,26 +4,24 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{title}}</title>
-  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:wght@600&family=Poppins:wght@400;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <div class="phone-screen">
     <div class="feed-content">
       {{#if data.shareholder}}
-        <video
-          class="feed-video"
-          src="{{data.shareholder.videoKey}}"
-          autoplay
-          loop
-          muted
-          playsinline
-        ></video>
+        <video class="feed-video" src="{{data.shareholder.videoKey}}" autoplay loop muted playsinline></video>
 
         <div class="feed-overlay">
           <div class="feed-bottom-left">
             <h2 class="feed-name">{{data.shareholder.title}}</h2>
+            <input type="checkbox" id="desc-toggle-{{data.shareholder.id}}" class="desc-toggle">
             <p class="feed-description">{{data.shareholder.description}}</p>
+            <label for="desc-toggle-{{data.shareholder.id}}" class="desc-more-btn">
+              <span class="show-less">Меньше</span>
+              <span class="show-more">Больше</span>
+            </label>
           </div>
 
           <div class="feed-right-panel">
@@ -32,13 +30,13 @@
               <span class="feed-stat-label">Доля</span>
             </div>
             <div class="feed-stat">
-              <span class="feed-stat-value">{{data.shareholder.sharesCount}}</span>
-              <span class="feed-stat-label">Акций</span>
+              <span class="feed-stat-value">{{data.shareholder.preferredShare}}%</span>
+              <span class="feed-stat-label">Привилегир.</span>
             </div>
             <div class="feed-stat">
               <span class="feed-stat-value">❤ {{data.likesCount}}</span>
             </div>
-            <a href="/dividends/feed/{{data.shareholder.id}}?next=true" class="feed-next-btn">↓</a>
+            <a href="/shareholders/feed/{{data.shareholder.id}}?next=true" class="feed-next-btn">↓</a>
           </div>
         </div>
       {{else}}

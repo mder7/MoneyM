@@ -1,6 +1,6 @@
 <div class="card-grid">
   {{#each data.shareholders}}
-    <a href="/dividends/shareholder/{{this.id}}" class="card">
+    <a href="/shareholders/feed/{{this.id}}" class="card">
       <div class="card-badge">№{{this.id}}</div>
       <h3 class="card-title">{{this.title}}</h3>
       <div class="card-stats">
@@ -9,8 +9,8 @@
           <span class="stat-label">Доля владения</span>
         </div>
         <div class="stat">
-          <span class="stat-value">{{this.sharesCount}}</span>
-          <span class="stat-label">Акций</span>
+          <span class="stat-value">{{this.preferredShare}}%</span>
+          <span class="stat-label">Привилег., %</span>
         </div>
       </div>
       <span class="card-cta">Подробнее →</span>
