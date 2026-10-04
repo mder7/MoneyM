@@ -19,7 +19,7 @@ export class UsersService {
       where: { login: dto.login },
     });
     if (existing) {
-      throw new ConflictException('Пользователь с таким логином уже существует');
+      throw new ConflictException();
     }
 
     const passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);

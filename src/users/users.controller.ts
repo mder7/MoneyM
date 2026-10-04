@@ -6,20 +6,20 @@ import { RegisterUserDto } from './dto/register-user.dto';
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
+  // POST /api/users/register — настоящая регистрация
   @Post('register')
   async register(@Body() dto: RegisterUserDto) {
-    return this.usersService.register(dto);
+    const user = await this.usersService.register(dto);
+    return { id: user.id, login: user.login, isAdmin: user.isAdmin };
   }
 
+  // POST /api/users/login — заглушка до лабораторной 4
   @Post('login')
   @HttpCode(200)
-  login() {
-    return { message: 'Будет реализовано в лабе 4' };
-  }
+  login(): void {}
 
+  // POST /api/users/logout — заглушка до лабораторной 4
   @Post('logout')
   @HttpCode(200)
-  logout() {
-    return { message: 'Будет реализовано в лабе 4' };
-  }
+  logout(): void {}
 }

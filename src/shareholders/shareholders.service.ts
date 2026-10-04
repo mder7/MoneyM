@@ -171,11 +171,11 @@ export class ShareholdersService {
     });
 
     if (!shareholder || shareholder.status !== ShareholderStatus.DRAFT) {
-      throw new NotFoundException('Черновик не найден');
+      throw new NotFoundException();
     }
 
     if (currentUserId !== undefined && shareholder.creator.id !== currentUserId) {
-      throw new ForbiddenException('Это не ваш черновик');
+      throw new ForbiddenException();
     }
 
     shareholder.shortDescription = dto.shortDescription;
@@ -194,13 +194,13 @@ export class ShareholdersService {
     });
 
     if (!shareholder) {
-      throw new NotFoundException('Акционер не найден');
+      throw new NotFoundException();
     }
     if (shareholder.creator.id !== currentUserId) {
-      throw new ForbiddenException('Можно удалять только свои записи');
+      throw new ForbiddenException();
     }
     if (shareholder.status === ShareholderStatus.DELETED) {
-      throw new BadRequestException('Уже удалено');
+      throw new BadRequestException();
     }
 
     shareholder.status = ShareholderStatus.DELETED;
