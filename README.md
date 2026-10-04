@@ -12,81 +12,85 @@
 
 Переменные окружения (`.env`): `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME`, `PORT`, `MINIO_HOST`, `MINIO_PORT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_PUBLIC_HOST`.
 
-## Таблицы БД
+## Описание таблиц БД
 
-### users
+### Таблица пользователей (users)
 
-| Поле | Тип | Описание |
-|---|---|---|
-| id | serial, PK | идентификатор |
-| login | varchar(64), unique | логин |
-| password | varchar(128) | bcrypt-хэш пароля |
-| is_admin | boolean, по умолчанию false | признак администратора |
+Используется для хранения пользователей системы.
 
-### shareholders (услуги)
+| Столбец | Тип | Модификаторы | Описание |
+|---|---|---|---|
+| id | INTEGER | PK | id пользователя |
+| login | VARCHAR(64) | UNIQUE, NOT NULL | логин |
+| password | VARCHAR(128) | NOT NULL | bcrypt-хэш пароля |
+| is_admin | BOOLEAN | DEFAULT false | признак администратора |
 
-| Поле | Тип | Описание |
-|---|---|---|
-| id | serial, PK | идентификатор |
-| full_name | varchar(255) | название / ФИО акционера |
-| short_description | text, nullable | краткое описание |
-| status | enum: draft, published, deleted | статус, хранится только в БД |
-| image_url | varchar, nullable | имя файла изображения в MinIO |
-| video_url | varchar, nullable | имя файла видео в MinIO |
-| ownership_share | float | доля владения, % |
-| preferred_share | float | доля привилегированных акций, % |
-| created_at | timestamp | дата создания |
-| formed_at | timestamp, nullable | дата формирования (публикации) |
-| completed_at | timestamp, nullable | дата завершения (удаления) |
-| creator_id | integer, FK на users.id, RESTRICT | создатель |
-| moderator_id | integer, FK на users.id, RESTRICT, nullable | модератор |
+### Таблица акционеров (shareholders)
 
-### likes (связь многие-ко-многим пользователь и акционер)
+Используется для хранения услуг системы: карточек акционеров со статусами черновик, опубликован, удалён.
 
-| Поле | Тип | Описание |
-|---|---|---|
-| id | serial, PK | идентификатор |
-| user_id | integer, FK на users.id, RESTRICT | пользователь |
-| shareholder_id | integer, FK на shareholders.id, RESTRICT | акционер |
+| Столбец | Тип | Модификаторы | Описание |
+|---|---|---|---|
+| id | INTEGER | PK | id акционера |
+| full_name | VARCHAR(255) | NOT NULL | название или ФИО |
+| short_description | TEXT | NULL | краткое описание |
+| status | ENUM (draft, published, deleted) | NOT NULL, DEFAULT draft | статус карточки, наружу не передаётся |
+| image_url | VARCHAR | NULL | имя файла изображения в MinIO |
+| video_url | VARCHAR | NULL | имя файла видео в MinIO |
+| ownership_share | FLOAT | DEFAULT 0 | доля владения, % |
+| preferred_share | FLOAT | DEFAULT 0 | доля привилегированных акций, % |
+| created_at | TIMESTAMP | NOT NULL | дата создания |
+| formed_at | TIMESTAMP | NULL | дата формирования (публикации) |
+| completed_at | TIMESTAMP | NULL | дата завершения (удаления) |
+| creator_id | INTEGER | FK (users.id), NOT NULL, RESTRICT | id создателя |
+| moderator_id | INTEGER | FK (users.id), NULL, RESTRICT | id модератора |
+
+### Таблица лайков (likes)
+
+Используется для связи многие-ко-многим между пользователями и акционерами.
+
+| Столбец | Тип | Модификаторы | Описание |
+|---|---|---|---|
+| id | INTEGER | PK | id лайка |
+| user_id | INTEGER | FK (users.id), NOT NULL, RESTRICT | id пользователя |
+| shareholder_id | INTEGER | FK (shareholders.id), NOT NULL, RESTRICT | id акционера |
 
 Пара (user_id, shareholder_id) уникальна. Каскадное удаление не используется.
 
-## Формат ответов
+## Описание методов
 
-Все адреса начинаются с `/api`. Текущий пользователь зафиксирован через singleton `CurrentUser.getInstance()` (id = 1), авторизация появится в лабораторной №4.
+Все адреса начинаются с `/api`. Текущий пользователь зафиксирован через singleton `CurrentUser.getInstance()` (id = 1), авторизация появится в лабораторной №4. Методы сгруппированы по домену url.
 
-Карточка акционера всегда содержит один и тот же набор полей, пустые значения передаются как `null`:
+Карточка акционера (**Card**) всегда содержит один и тот же набор полей, пустые значения передаются как `null`:
 
-`id`, `fullName`, `shortDescription`, `imageUrl`, `videoUrl`, `ownershipShare`, `preferredShare`, `likesCount`, `isMine` (1, если создатель текущий пользователь, иначе 0).
+`{ id: integer, fullName: string, shortDescription: string, imageUrl: string <URL>, videoUrl: string <URL>, ownershipShare: float, preferredShare: float, likesCount: integer, isMine: integer (0 или 1) }`
 
-Статус, создатель, модератор и даты в ответе не передаются. Ошибки возвращаются только кодом статуса без тела: 404 (не найдено), 403 (чужая запись), 400 (неверные данные), 409 (логин занят).
+Статус, создатель, модератор и даты в ответе не передаются. Ошибки возвращаются только кодом статуса без тела.
 
-## HTTP-методы
+### Домен /api/shareholders
 
-### Домен shareholders
+| Название | Описание | Method | Path | Вход | Выход |
+|---|---|---|---|---|---|
+| list | Список опубликованных акционеров с фильтрацией | GET | /api/shareholders | query: `minShare: float` (необязательно) | 200, `[Card]` |
+| feed | Первая карточка ленты | GET | /api/shareholders/feed | нет | 200, `Card`; 404, если опубликованных нет |
+| feedById | Карточка по id или следующая по кругу | GET | /api/shareholders/feed/{id} | path: `id: integer`; query: `next: boolean` (необязательно) | 200, `Card`; 404 |
+| draft | Черновик текущего пользователя (не более одного) | GET | /api/shareholders/draft | нет | 200, `Card`; 404, если черновика нет |
+| create | Добавление акционера с файлами | POST | /api/shareholders | multipart/form-data: `fullName: string`, `image: file`, `video: file` | 201, `Card` (файлы в MinIO под именем UUID на латинице) |
+| publish | Публикация черновика (draft в published) | PUT | /api/shareholders/{id}/publish | path: `id: integer`; JSON: `{ shortDescription: string, ownershipShare: float, preferredShare: float }` | 200, `Card`; 404; 403 |
+| remove | Мягкое удаление своей записи | DELETE | /api/shareholders/{id} | path: `id: integer` | 200, тело пустое; 404; 403 |
+| like | Поставить или снять лайк | POST | /api/shareholders/{id}/like | path: `id: integer`; JSON: `{ value: integer (0 или 1) }` | 200, тело пустое; 400 |
 
-| Метод | Адрес | Вход | Выход |
-|---|---|---|---|
-| GET | /api/shareholders | query: `minShare` (необязательно) | 200, массив карточек, только опубликованные |
-| GET | /api/shareholders/feed | нет | 200, первая опубликованная карточка |
-| GET | /api/shareholders/feed/:id | query: `next=true` (необязательно) | 200, карточка по id; с `next=true` следующая опубликованная по кругу; 404, если нет |
-| GET | /api/shareholders/draft | нет | 200, черновик текущего пользователя (не более одного); 404, если его нет |
-| POST | /api/shareholders | multipart/form-data: `fullName` (текст), `image` (файл), `video` (файл) | 201, карточка-черновик; файлы сохраняются в MinIO под именем-UUID на латинице, имена пишутся в БД |
-| PUT | /api/shareholders/:id/publish | JSON: `shortDescription`, `ownershipShare`, `preferredShare` | 200, опубликованная карточка |
-| DELETE | /api/shareholders/:id | нет | 200, тело пустое; мягкое удаление, только своих записей |
-| POST | /api/shareholders/:id/like | JSON: `value` (0 снимает лайк, 1 ставит) | 200, тело пустое |
+### Домен /api/users
 
-### Домен users
-
-| Метод | Адрес | Вход | Выход |
-|---|---|---|---|
-| POST | /api/users/register | JSON: `login`, `password` (не короче 6 символов) | 201, `id`, `login`, `isAdmin` (пароль не возвращается) |
-| POST | /api/users/login | нет | 200, заглушка для лабораторной №4 |
-| POST | /api/users/logout | нет | 200, заглушка для лабораторной №4 |
+| Название | Описание | Method | Path | Вход | Выход |
+|---|---|---|---|---|---|
+| register | Регистрация пользователя | POST | /api/users/register | JSON: `{ login: string, password: string (от 6 символов) }` | 201, `{ id: integer, login: string, isAdmin: boolean }`; 409, если логин занят |
+| login | Аутентификация (заглушка для лабораторной №4) | POST | /api/users/login | нет | 200, тело пустое |
+| logout | Деавторизация (заглушка для лабораторной №4) | POST | /api/users/logout | нет | 200, тело пустое |
 
 ## Бизнес-правила
 
-- Переходы статусов: draft в published (PUT publish), draft или published в deleted (DELETE). Возврат в draft запрещён.
+- Переходы статусов: draft в published (publish), draft или published в deleted (remove). Возврат в draft запрещён.
 - Записи в статусе deleted клиенту не передаются.
 - У пользователя не более одного черновика.
 - Системные поля (id, статус, создатель, модератор, даты) клиент менять не может: они вычисляются на бэкенде, лишние поля в теле запроса отсекает ValidationPipe (whitelist).
