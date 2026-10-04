@@ -53,9 +53,16 @@ export class Shareholder {
   @Column({ name: 'formed_at', type: 'timestamp', nullable: true })
   formedAt: Date | null;
 
+  @Column({ name: 'completed_at', type: 'timestamp', nullable: true })
+  completedAt: Date | null;
+
   @ManyToOne(() => User, (user) => user.shareholders, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'creator_id' })
   creator: User;
+
+  @ManyToOne(() => User, { onDelete: 'RESTRICT', nullable: true })
+  @JoinColumn({ name: 'moderator_id' })
+  moderator: User | null;
 
   @OneToMany(() => Like, (like) => like.shareholder)
   likes: Like[];

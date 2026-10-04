@@ -1,114 +1,88 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# MoneyM: веб-сервис акционеров МКПАО «Яндекс»
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Бэкенд на NestJS + TypeORM + PostgreSQL, файлы изображений и видео хранятся в MinIO.
+Лабораторная работа №3: REST API для будущего SPA-фронтенда.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Запуск
 
-## Description
+1. `docker compose up -d` (PostgreSQL на порту 5433, Adminer на 8080; MinIO запущен отдельным контейнером на 9000/9001)
+2. `npm install`
+3. `npm run migration:run`
+4. `npm run start:dev` (сервер на http://localhost:3000)
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+Переменные окружения (`.env`): `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME`, `PORT`, `MINIO_HOST`, `MINIO_PORT`, `MINIO_ACCESS_KEY`, `MINIO_SECRET_KEY`, `MINIO_PUBLIC_HOST`.
 
-## Project setup
+## Таблицы БД
 
-```bash
-$ npm install
-```
+### users
 
-## Compile and run the project
+| Поле | Тип | Описание |
+|---|---|---|
+| id | serial, PK | идентификатор |
+| login | varchar(64), unique | логин |
+| password | varchar(128) | bcrypt-хэш пароля |
+| is_admin | boolean, по умолчанию false | признак администратора |
 
-```bash
-# development
-$ npm run start
+### shareholders (услуги)
 
-# watch mode
-$ npm run start:dev
+| Поле | Тип | Описание |
+|---|---|---|
+| id | serial, PK | идентификатор |
+| full_name | varchar(255) | название / ФИО акционера |
+| short_description | text, nullable | краткое описание |
+| status | enum: draft, published, deleted | статус карточки |
+| image_url | varchar, nullable | имя файла изображения в MinIO |
+| video_url | varchar, nullable | имя файла видео в MinIO |
+| ownership_share | float | доля владения, % |
+| preferred_share | float | доля привилегированных акций, % |
+| created_at | timestamp | дата создания |
+| formed_at | timestamp, nullable | дата формирования (публикации) |
+| completed_at | timestamp, nullable | дата завершения (удаления) |
+| creator_id | integer, FK на users.id, RESTRICT | создатель |
+| moderator_id | integer, FK на users.id, RESTRICT, nullable | модератор |
 
-# production mode
-$ npm run start:prod
-```
+### likes (связь многие-ко-многим пользователь и акционер)
 
-## Run tests
+| Поле | Тип | Описание |
+|---|---|---|
+| id | serial, PK | идентификатор |
+| user_id | integer, FK на users.id, RESTRICT | пользователь |
+| shareholder_id | integer, FK на shareholders.id, RESTRICT | акционер |
 
-```bash
-# unit tests
-$ npm run test
+Пара (user_id, shareholder_id) уникальна. Каскадное удаление не используется.
 
-# e2e tests
-$ npm run test:e2e
+## HTTP-методы
 
-# test coverage
-$ npm run test:cov
-```
+Все адреса начинаются с `/api`. Текущий пользователь зафиксирован через singleton `CurrentUser.getInstance()` (id = 1), авторизация появится в лабораторной №4.
 
-## Deployment
+### Домен shareholders
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+| Метод | Адрес | Вход | Выход |
+|---|---|---|---|
+| GET | /api/shareholders | query: `minShare` (необязательно) | массив опубликованных карточек: id, fullName, shortDescription, status, imageUrl, videoUrl, ownershipShare, preferredShare, likesCount, isMine (0/1) |
+| GET | /api/shareholders/feed | query: `afterId` (необязательно) | одна карточка; без afterId первая опубликованная, с afterId следующая по кругу |
+| GET | /api/shareholders/draft | нет | черновик текущего пользователя (не более одного), пустой ответ если его нет |
+| POST | /api/shareholders | multipart/form-data: `fullName` (текст), `image` (файл), `video` (файл) | созданный или обновлённый черновик; файлы сохраняются в MinIO под именем-UUID на латинице, имена пишутся в БД |
+| PUT | /api/shareholders/:id/publish | JSON: `shortDescription`, `ownershipShare`, `preferredShare` | опубликованная карточка (draft в published) |
+| DELETE | /api/shareholders/:id | нет | `{"success": true}`; мягкое удаление (status = deleted, заполняется completed_at), только свои записи |
+| POST | /api/shareholders/:id/like | JSON: `value` (0 снимает лайк, 1 ставит) | `{"success": true}` |
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+### Домен users
 
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
+| Метод | Адрес | Вход | Выход |
+|---|---|---|---|
+| POST | /api/users/register | JSON: `login`, `password` (не короче 6 символов) | id, login, isAdmin (пароль не возвращается) |
+| POST | /api/users/login | нет | заглушка для лабораторной №4 |
+| POST | /api/users/logout | нет | заглушка для лабораторной №4 |
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+## Бизнес-правила
 
-## Observability
+- Переходы статусов: draft в published (PUT publish), draft или published в deleted (DELETE). Возврат в draft запрещён.
+- Записи в статусе deleted клиенту не передаются.
+- У пользователя не более одного черновика.
+- Системные поля (id, status, creator, moderator, created_at, formed_at, completed_at) клиент менять не может: они вычисляются на бэкенде, а лишние поля в теле запроса отсекает ValidationPipe (whitelist).
+- Публиковать и удалять можно только свои записи.
 
-In production applications, observability is essential for understanding how your system behaves, detecting issues early, and maintaining reliable performance.
+## Страницы SSR из лабораторных №1-2
 
-[NestJS Observe](https://observe.nestjs.com) automatically instruments your NestJS application, giving you deep visibility into your system with minimal setup:
-
-- **Distributed tracing:** Follow requests across services and understand how they flow through your system.
-- **Waterfall analysis:** Visualize request execution and identify slow operations, bottlenecks, and unexpected delays.
-- **Performance analysis:** Analyze application performance in real time and quickly pinpoint areas that need optimization.
-- **Metrics:** Track key application and infrastructure metrics to understand system health and performance trends.
-- **Logging:** Centralize and correlate logs with traces and other telemetry to make debugging easier.
-- **Error tracking:** Detect errors quickly and investigate their root causes with the surrounding context.
-- **SLA monitoring:** Track service-level objectives and identify when your application is approaching or exceeding defined thresholds.
-- **Alarms and alerts:** Set up alerts for critical errors, performance degradation, SLA violations, and other anomalies so your team can react quickly.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Auto-instrument your application with [NestJS Observer](https://observer.nestjs.com). Distributed tracing, metrics, and logging made easy. Error tracking and performance monitoring for your NestJS applications.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+`/shareholders` (лента), `/shareholders/tiles` (плитка), `/shareholders/add` (добавление).

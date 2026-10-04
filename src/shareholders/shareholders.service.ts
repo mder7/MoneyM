@@ -1,23 +1,40 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { Shareholder, ShareholderStatus } from './entities/shareholder.entity';
+import { Like } from '../likes/entities/like.entity';
 import { CreateShareholderDto } from './dto/create-shareholder.dto';
 import { PublishShareholderDto } from './dto/publish-shareholder.dto';
+import { MinioService } from '../minio/minio.service';
 
 @Injectable()
 export class ShareholdersService {
   constructor(
     @InjectRepository(Shareholder)
     private readonly shareholdersRepository: Repository<Shareholder>,
+    @InjectRepository(Like)
+    private readonly likesRepository: Repository<Like>,
     private readonly dataSource: DataSource,
+    private readonly minioService: MinioService,
   ) {}
+
+  resolveMediaUrl(value: string | null): string | null {
+    if (!value) return null;
+    if (value.startsWith('http') || value.startsWith('/')) return value;
+    return this.minioService.getPublicUrl(value);
+  }
 
   // Плитка: опубликованные, с опциональным фильтром по мин. доле владения, ORM
   async findPublished(minShare?: number): Promise<Shareholder[]> {
     const qb = this.shareholdersRepository
       .createQueryBuilder('s')
       .leftJoinAndSelect('s.likes', 'likes')
+      .leftJoinAndSelect('s.creator', 'creator')
       .where('s.status = :status', { status: ShareholderStatus.PUBLISHED })
       .orderBy('s.id', 'ASC');
 
@@ -32,7 +49,7 @@ export class ShareholdersService {
   async findById(id: number): Promise<Shareholder | null> {
     const shareholder = await this.shareholdersRepository.findOne({
       where: { id, status: ShareholderStatus.PUBLISHED },
-      relations: { likes: true },
+      relations: { likes: true, creator: true },
     });
 
     return shareholder ? this.attachLikesCount([shareholder])[0] : null;
@@ -45,6 +62,7 @@ export class ShareholdersService {
     const qb = this.shareholdersRepository
       .createQueryBuilder('s')
       .leftJoinAndSelect('s.likes', 'likes')
+      .leftJoinAndSelect('s.creator', 'creator')
       .where('s.status = :status', { status: ShareholderStatus.PUBLISHED });
 
     if (afterId) {
@@ -60,6 +78,7 @@ export class ShareholdersService {
       card = await this.shareholdersRepository
         .createQueryBuilder('s')
         .leftJoinAndSelect('s.likes', 'likes')
+        .leftJoinAndSelect('s.creator', 'creator')
         .where('s.status = :status', { status: ShareholderStatus.PUBLISHED })
         .orderBy('s.id', 'ASC')
         .take(1)
@@ -80,6 +99,7 @@ export class ShareholdersService {
   async findDraftByCreator(creatorId: number): Promise<Shareholder | null> {
     return this.shareholdersRepository.findOne({
       where: { creator: { id: creatorId }, status: ShareholderStatus.DRAFT },
+      relations: { creator: true },
     });
   }
 
@@ -107,13 +127,55 @@ export class ShareholdersService {
   }
 
   // POST опубликовать: заполнить краткую инф. + 2 поля темы, ORM
-  async publish(id: number, dto: PublishShareholderDto): Promise<Shareholder> {
+  async createDraftWithFiles(
+    fullName: string,
+    creatorId: number,
+    imageFile?: Express.Multer.File,
+    videoFile?: Express.Multer.File,
+  ): Promise<Shareholder> {
+    const existingDraft = await this.findDraftByCreator(creatorId);
+
+    const imageFileName = imageFile
+      ? await this.minioService.upload(imageFile)
+      : undefined;
+    const videoFileName = videoFile
+      ? await this.minioService.upload(videoFile)
+      : undefined;
+
+    if (existingDraft) {
+      existingDraft.fullName = fullName;
+      if (imageFileName) existingDraft.imageUrl = imageFileName;
+      if (videoFileName) existingDraft.videoUrl = videoFileName;
+      return this.shareholdersRepository.save(existingDraft);
+    }
+
+    const draft = this.shareholdersRepository.create({
+      fullName,
+      imageUrl: imageFileName,
+      videoUrl: videoFileName,
+      status: ShareholderStatus.DRAFT,
+      creator: { id: creatorId } as Shareholder['creator'],
+    });
+
+    return this.shareholdersRepository.save(draft);
+  }
+
+  async publish(
+    id: number,
+    dto: PublishShareholderDto,
+    currentUserId?: number,
+  ): Promise<Shareholder> {
     const shareholder = await this.shareholdersRepository.findOne({
       where: { id },
+      relations: { creator: true },
     });
 
     if (!shareholder || shareholder.status !== ShareholderStatus.DRAFT) {
       throw new NotFoundException('Черновик не найден');
+    }
+
+    if (currentUserId !== undefined && shareholder.creator.id !== currentUserId) {
+      throw new ForbiddenException('Это не ваш черновик');
     }
 
     shareholder.shortDescription = dto.shortDescription;
@@ -125,11 +187,60 @@ export class ShareholdersService {
     return this.shareholdersRepository.save(shareholder);
   }
 
+  async softDeleteOwn(id: number, currentUserId: number): Promise<void> {
+    const shareholder = await this.shareholdersRepository.findOne({
+      where: { id },
+      relations: { creator: true },
+    });
+
+    if (!shareholder) {
+      throw new NotFoundException('Акционер не найден');
+    }
+    if (shareholder.creator.id !== currentUserId) {
+      throw new ForbiddenException('Можно удалять только свои записи');
+    }
+    if (shareholder.status === ShareholderStatus.DELETED) {
+      throw new BadRequestException('Уже удалено');
+    }
+
+    shareholder.status = ShareholderStatus.DELETED;
+    shareholder.completedAt = new Date();
+    await this.shareholdersRepository.save(shareholder);
+  }
+
   // POST удалить: логическое удаление ЧЕРЕЗ SQL UPDATE (курсор), БЕЗ ORM
   async deleteByCursor(id: number): Promise<void> {
     await this.dataSource.query(
       `UPDATE shareholders SET status = $1 WHERE id = $2 AND status = $3`,
       [ShareholderStatus.DELETED, id, ShareholderStatus.PUBLISHED],
     );
+  }
+
+  async toggleLike(
+    shareholderId: number,
+    userId: number,
+    value: 0 | 1,
+  ): Promise<void> {
+    const existing = await this.likesRepository.findOne({
+      where: {
+        shareholder: { id: shareholderId },
+        user: { id: userId },
+      },
+    });
+
+    if (value === 1) {
+      if (!existing) {
+        const like = this.likesRepository.create({
+          shareholder: { id: shareholderId } as Like['shareholder'],
+          user: { id: userId } as Like['user'],
+        });
+        await this.likesRepository.save(like);
+      }
+      return;
+    }
+
+    if (existing) {
+      await this.likesRepository.remove(existing);
+    }
   }
 }
