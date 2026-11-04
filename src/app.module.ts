@@ -6,6 +6,7 @@ import { Shareholder } from './shareholders/entities/shareholder.entity';
 import { Like } from './likes/entities/like.entity';
 import { ShareholdersModule } from './shareholders/shareholders.module';
 import { UsersModule } from './users/users.module';
+import { SessionModule } from './session/session.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { UsersModule } from './users/users.module';
       entities: [User, Shareholder, Like],
       synchronize: false, // таблицы создаются только миграциями, не автогенерацией
     }),
+    SessionModule,
     ShareholdersModule,
     UsersModule,
   ],

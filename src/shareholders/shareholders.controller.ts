@@ -8,18 +8,20 @@ import {
   Query,
   Render,
   Res,
+  UseGuards,
 } from '@nestjs/common';
+import { ApiExcludeController } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { ShareholdersService } from './shareholders.service';
 import { Shareholder } from './entities/shareholder.entity';
-
-// авторизации в проекте нет — все действия выполняются от лица одного пользователя
-const CURRENT_USER_ID = 1;
+import { SessionGuard } from '../session/session.guard';
+import { UserId } from '../session/user-id.decorator';
 
 // заглушки на случай пустых imageUrl/videoUrl — берём уже существующий файл из MinIO
 const DEFAULT_IMAGE = '/img/default.jpg';
 const DEFAULT_VIDEO = '/video/default.mp4';
 
+@ApiExcludeController()
 @Controller('shareholders')
 export class ShareholdersController {
   constructor(private readonly shareholdersService: ShareholdersService) {}
@@ -55,9 +57,10 @@ export class ShareholdersController {
   // GET /shareholders/add
   @Get('add')
   @Render('add')
-  async getAddPage() {
+  @UseGuards(SessionGuard)
+  async getAddPage(@UserId() currentUserId: number) {
     const draft =
-      await this.shareholdersService.findDraftByCreator(CURRENT_USER_ID);
+      await this.shareholdersService.findDraftByCreator(currentUserId);
 
     return {
       title: 'Добавление акционера',
@@ -84,13 +87,15 @@ export class ShareholdersController {
   // POST добавить/обновить черновик (кнопка "Далее"), ORM
   // Фото/видео в этой лабе реально не загружаются — подставляем заглушку
   @Post()
+  @UseGuards(SessionGuard)
   async create(
     @Body('fullName') fullName: string,
+    @UserId() currentUserId: number,
     @Res() res: Response,
   ) {
     await this.shareholdersService.createDraft({
       fullName,
-      creatorId: CURRENT_USER_ID,
+      creatorId: currentUserId,
       imageUrl: DEFAULT_IMAGE,
       videoUrl: DEFAULT_VIDEO,
     });
@@ -99,25 +104,32 @@ export class ShareholdersController {
 
   // POST опубликовать (кнопка "Опубликовать"), ORM
   @Post(':id/publish')
+  @UseGuards(SessionGuard)
   async publish(
     @Param('id', ParseIntPipe) id: number,
     @Body('shortDescription') shortDescription: string,
     @Body('ownershipShare') ownershipShareRaw: string,
     @Body('preferredShare') preferredShareRaw: string,
+    @UserId() currentUserId: number,
     @Res() res: Response,
   ) {
     await this.shareholdersService.publish(id, {
       shortDescription,
       ownershipShare: parseFloat(ownershipShareRaw),
       preferredShare: parseFloat(preferredShareRaw),
-    });
+    }, currentUserId);
     res.redirect('/shareholders/tiles');
   }
 
   // POST удалить — SQL UPDATE через курсор, без ORM (кнопка на Плитке)
   @Post(':id/delete')
-  async remove(@Param('id', ParseIntPipe) id: number, @Res() res: Response) {
-    await this.shareholdersService.deleteByCursor(id);
+  @UseGuards(SessionGuard)
+  async remove(
+    @Param('id', ParseIntPipe) id: number,
+    @UserId() currentUserId: number,
+    @Res() res: Response,
+  ) {
+    await this.shareholdersService.softDeleteOwn(id, currentUserId);
     res.redirect('/shareholders/tiles');
   }
 
@@ -139,7 +151,7 @@ export class ShareholdersController {
     };
   }
 
-  // подсчёт лайков делаем здесь, в контроллере — по замечанию преподавателя
+  // подсчёт лайков делаем здесь
   private buildFeedView(shareholder?: Shareholder | null) {
     return {
       title: shareholder ? shareholder.fullName : 'Не найдено',

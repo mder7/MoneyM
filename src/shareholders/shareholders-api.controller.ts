@@ -11,47 +11,62 @@ import {
   Put,
   Query,
   UploadedFiles,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
+import {
+  ApiBody,
+  ApiConsumes,
+  ApiCookieAuth,
+  ApiQuery,
+  ApiTags,
+} from '@nestjs/swagger';
 import { ShareholdersService } from './shareholders.service';
 import { PublishShareholderDto } from './dto/publish-shareholder.dto';
 import { LikeDto } from './dto/like.dto';
-import { CurrentUser } from './current-user';
 import { Shareholder } from './entities/shareholder.entity';
+import {
+  OptionalSessionGuard,
+  SessionGuard,
+} from '../session/session.guard';
+import { UserId } from '../session/user-id.decorator';
 
+@ApiTags('Акционеры')
 @Controller('api/shareholders')
 export class ShareholdersApiController {
   constructor(private readonly shareholdersService: ShareholdersService) {}
 
-  // GET /api/shareholders?minShare=20 — только опубликованные, с признаком isMine
   @Get()
-  async list(@Query('minShare') minShare?: string) {
+  @UseGuards(OptionalSessionGuard)
+  @ApiQuery({ name: 'minShare', required: false, type: Number })
+  async list(
+    @UserId() currentUserId: number | null,
+    @Query('minShare') minShare?: string,
+  ) {
     const parsedMinShare = minShare ? Number(minShare) : undefined;
-    const currentUserId = CurrentUser.getInstance().id;
     const shareholders =
       await this.shareholdersService.findPublished(parsedMinShare);
 
     return shareholders.map((s) => this.toApiView(s, currentUserId));
   }
 
-  // GET /api/shareholders/feed — лента без id (первая опубликованная)
   @Get('feed')
-  async feed() {
-    const currentUserId = CurrentUser.getInstance().id;
+  @UseGuards(OptionalSessionGuard)
+  async feed(@UserId() currentUserId: number | null) {
     const shareholder = await this.shareholdersService.findFeedCard();
     if (!shareholder) throw new NotFoundException();
     return this.toApiView(shareholder, currentUserId);
   }
 
-  // GET /api/shareholders/feed/:id — конкретная карточка
-  // GET /api/shareholders/feed/:id?next=true — следующая по кругу после id
   @Get('feed/:id')
+  @UseGuards(OptionalSessionGuard)
+  @ApiQuery({ name: 'next', required: false, enum: ['true', 'false'] })
   async feedById(
+    @UserId() currentUserId: number | null,
     @Param('id', ParseIntPipe) id: number,
     @Query('next') next?: string,
   ) {
-    const currentUserId = CurrentUser.getInstance().id;
     const shareholder =
       next === 'true'
         ? await this.shareholdersService.findFeedCard(id)
@@ -60,18 +75,31 @@ export class ShareholdersApiController {
     return this.toApiView(shareholder, currentUserId);
   }
 
-  // GET /api/shareholders/draft — черновик текущего пользователя, id не указывается
   @Get('draft')
-  async draft() {
-    const currentUserId = CurrentUser.getInstance().id;
+  @UseGuards(SessionGuard)
+  @ApiCookieAuth('sessionId')
+  async draft(@UserId() currentUserId: number) {
     const draft =
       await this.shareholdersService.findDraftByCreator(currentUserId);
     if (!draft) throw new NotFoundException();
     return this.toApiView(draft, currentUserId);
   }
 
-  // POST /api/shareholders — добавление + файлы изображения и видео
   @Post()
+  @UseGuards(SessionGuard)
+  @ApiCookieAuth('sessionId')
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      required: ['fullName'],
+      properties: {
+        fullName: { type: 'string' },
+        image: { type: 'string', format: 'binary' },
+        video: { type: 'string', format: 'binary' },
+      },
+    },
+  })
   @UseInterceptors(
     FileFieldsInterceptor([
       { name: 'image', maxCount: 1 },
@@ -79,6 +107,7 @@ export class ShareholdersApiController {
     ]),
   )
   async create(
+    @UserId() currentUserId: number,
     @Body('fullName') fullName: string,
     @UploadedFiles()
     files: {
@@ -86,7 +115,6 @@ export class ShareholdersApiController {
       video?: Express.Multer.File[];
     },
   ) {
-    const currentUserId = CurrentUser.getInstance().id;
     const draft = await this.shareholdersService.createDraftWithFiles(
       fullName,
       currentUserId,
@@ -96,13 +124,14 @@ export class ShareholdersApiController {
     return this.toApiView(draft, currentUserId);
   }
 
-  // PUT /api/shareholders/:id/publish — публикация (смена статуса)
   @Put(':id/publish')
+  @UseGuards(SessionGuard)
+  @ApiCookieAuth('sessionId')
   async publish(
+    @UserId() currentUserId: number,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: PublishShareholderDto,
   ) {
-    const currentUserId = CurrentUser.getInstance().id;
     const published = await this.shareholdersService.publish(
       id,
       dto,
@@ -111,32 +140,36 @@ export class ShareholdersApiController {
     return this.toApiView(published, currentUserId);
   }
 
-  // DELETE /api/shareholders/:id — soft delete своей записи, тело ответа пустое
   @Delete(':id')
-  async remove(@Param('id', ParseIntPipe) id: number): Promise<void> {
+  @UseGuards(SessionGuard)
+  @ApiCookieAuth('sessionId')
+  async remove(
+    @UserId() currentUserId: number,
+    @Param('id', ParseIntPipe) id: number,
+  ): Promise<void> {
     await this.shareholdersService.softDeleteOwn(
       id,
-      CurrentUser.getInstance().id,
+      currentUserId,
     );
   }
 
-  // POST /api/shareholders/:id/like — value: 0 снять, 1 поставить, тело ответа пустое
   @Post(':id/like')
   @HttpCode(200)
+  @UseGuards(SessionGuard)
+  @ApiCookieAuth('sessionId')
   async like(
+    @UserId() currentUserId: number,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: LikeDto,
   ): Promise<void> {
     await this.shareholdersService.toggleLike(
       id,
-      CurrentUser.getInstance().id,
+      currentUserId,
       dto.value,
     );
   }
 
-  // Сериализатор: набор полей всегда одинаковый, пустые значения идут как null.
-  // Статус, создатель, модератор и даты клиенту не нужны и не отдаются.
-  private toApiView(s: Shareholder, currentUserId: number) {
+  private toApiView(s: Shareholder, currentUserId: number | null) {
     return {
       id: s.id,
       fullName: s.fullName,
@@ -146,7 +179,8 @@ export class ShareholdersApiController {
       ownershipShare: s.ownershipShare ?? 0,
       preferredShare: s.preferredShare ?? 0,
       likesCount: s.likesCount ?? s.likes?.length ?? 0,
-      isMine: s.creator?.id === currentUserId ? 1 : 0,
+      isMine:
+        currentUserId !== null && s.creator?.id === currentUserId ? 1 : 0,
     };
   }
 }
